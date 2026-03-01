@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Detection Result</title>
+    <style>
+        body {
+            background: linear-gradient(to right, #141e30, #243b55);
+            font-family: Arial;
+            color: white;
+            text-align: center;
+            padding-top: 100px;
+        }
+
+        .card {
+            background-color: #1f2a40;
+            padding: 40px;
+            width: 400px;
+            margin: auto;
+            border-radius: 10px;
+        }
+
+        .safe { color: #00ff88; font-weight: bold; }
+        .suspicious { color: orange; font-weight: bold; }
+        .phishing { color: red; font-weight: bold; }
+
+        button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            background-color: #00c6ff;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0072ff;
+        }
+
+        a {
+            color: #00c6ff;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Scan Result</h2>
+
+    {% if result == "SAFE" %}
+        <p class="safe">{{ result }}</p>
+    {% elif result == "SUSPICIOUS" %}
+        <p class="suspicious">{{ result }}</p>
+    {% else %}
+        <p class="phishing">{{ result }}</p>
+    {% endif %}
+
+    <p>Risk Score: {{ score }}</p>
+   <h4>Why This Result?</h4>
+
+{% if reasons %}
+    <ul>
+        {% for reason in reasons %}
+            <li>{{ reason }}</li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p style="color:#00ff88;">No suspicious indicators detected.</p>
+{% endif %}
+</ul>
+    <br>
+    <a href="/">Scan Another</a>
+    <br><br>
+    <a href="/history">View History</a>
+</div>
+
+</body>
+</html>
