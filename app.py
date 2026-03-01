@@ -1,4 +1,6 @@
+
 import smtplib
+import numpy as np
 from email.mime.text import MIMEText
 from flask import send_file
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -8,7 +10,7 @@ from reportlab.lib.pagesizes import letter
 import re
 import hashlib
 from flask import session, redirect, url_for
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, url_for, session
 import sqlite3
 
 # Simple feature dataset
@@ -27,6 +29,7 @@ y = np.array([0, 1, 1, 0, 1, 0])
 
 
 app = Flask(__name__)
+app.secret_key = "your_secret_key_here"
 app.secret_key = "cyberguard_secret_key"
 
 url_pattern = re.compile(
@@ -82,6 +85,7 @@ def check_url(url):
     if result.startswith("PHISHING"):
     	send_alert_email(url)
     return result, score, reasons
+
 def send_alert_email(url):
     sender = "your_email@gmail.com"
     password = "your_app_password"
@@ -95,13 +99,23 @@ def send_alert_email(url):
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(sender, password)
         server.sendmail(sender, receiver, message.as_string())
+
 def init_db():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS scans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
             url TEXT,
             result TEXT,
             score INTEGER
@@ -111,8 +125,62 @@ def init_db():
     conn.commit()
     conn.close()
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                "INSERT INTO users (username, password) VALUES (?, ?)",
+                (username, hashed_password)
+            )
+            conn.commit()
+        except:
+            return "Username already exists"
+
+        conn.close()
+        return redirect("/login")
+
+    return render_template("register.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT * FROM users WHERE username=? AND password=?",
+            (username, hashed_password)
+        )
+
+        user = cursor.fetchone()
+        conn.close()
+
+        if user:
+            session["user_id"] = user[0]
+            return redirect("/")
+        else:
+            return "Invalid credentials"
+
+    return render_template("login.html")
+
 @app.route("/", methods=["GET", "POST"])
 def home():
+    if "user_id" not in session:
+    	return redirect("/login")
     if request.method == "POST":
         url = request.form["url"]
 
@@ -128,9 +196,9 @@ def home():
         conn = sqlite3.connect("database.db")
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO scans (url, result, score) VALUES (?, ?, ?)",
-            (url, result, score)
-        )
+     		"INSERT INTO scans (user_id, url, result, score) VALUES (?, ?, ?, ?)",
+    			(session["user_id"], url, result, score)
+	)
         conn.commit()
         conn.close()
 
@@ -140,8 +208,10 @@ def home():
                                reasons=reasons)
 
     return render_template("index.html")
+
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_HASH = hashlib.sha256("admin123".encode()).hexdigest()
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -157,38 +227,30 @@ def login():
             return "Invalid Credentials!"
 
     return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.pop("user_id", None)
+    return redirect("/login")
+
 @app.route("/history")
 def history():
-    if "admin" not in session:
-        return redirect(url_for("login"))
+    if "user_id" not in session:
+        return redirect("/login")
 
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM scans")
+    cursor.execute(
+        "SELECT * FROM scans WHERE user_id=?",
+        (session["user_id"],)
+    )
+
     data = cursor.fetchall()
-
-    cursor.execute("SELECT COUNT(*) FROM scans")
-    total_scans = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM scans WHERE result='PHISHING'")
-    total_phishing = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM scans WHERE result='SUSPICIOUS'")
-    total_suspicious = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM scans WHERE result='SAFE'")
-    total_safe = cursor.fetchone()[0]
-
     conn.close()
 
-    return render_template("history.html",
-                           data=data,
-                           total_scans=total_scans,
-                           total_phishing=total_phishing,
-                           total_suspicious=total_suspicious,
-                           total_safe=total_safe)
-@app.route("/download_report")
+    return render_template("history.html", data=data)@app.route("/download_report")
+
 def download_report():
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
@@ -217,10 +279,12 @@ def download_report():
     doc.build(elements)
 
     return send_file(filename, as_attachment=True)
+
 @app.route("/logout")
 def logout():
     session.pop("admin", None)
     return redirect(url_for("login"))	
+
 if __name__ == "__main__":
     init_db()
     app.run(debug=True)
