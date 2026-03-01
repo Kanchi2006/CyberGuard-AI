@@ -6,8 +6,6 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 import re
-from sklearn.linear_model import LogisticRegression
-import numpy as np
 import hashlib
 from flask import session, redirect, url_for
 from flask import Flask, render_template, request
@@ -27,8 +25,6 @@ X = np.array([
 # Labels: 0 = Safe, 1 = Phishing
 y = np.array([0, 1, 1, 0, 1, 0])
 
-model = LogisticRegression()
-model.fit(X, y)
 
 app = Flask(__name__)
 app.secret_key = "cyberguard_secret_key"
@@ -81,12 +77,7 @@ def check_url(url):
     https_feature = 1 if url.startswith("https") else 0
     at_feature = 1 if "@" in url else 0
 
-    features = np.array([[length_feature, https_feature, at_feature]])
-    ml_prediction = model.predict(features)[0]
-
-    if ml_prediction == 1:
-        result = "PHISHING (AI)"
-        reasons.append("AI model detected phishing pattern")
+    
     
     if result.startswith("PHISHING"):
     	send_alert_email(url)
